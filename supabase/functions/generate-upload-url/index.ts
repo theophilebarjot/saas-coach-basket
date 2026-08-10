@@ -139,11 +139,13 @@ Deno.serve(async (req) => {
 
     const s3Client = new S3Client({
       region: "auto",
-      endpoint: `https://${accountId}.eu.r2.cloudflarestorage.com`,
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: {
         accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,
         secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!,
       },
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
 
     const command = new PutObjectCommand({

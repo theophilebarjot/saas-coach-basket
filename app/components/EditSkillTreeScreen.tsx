@@ -10,9 +10,10 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import VideoDemoUploader from '../components/VideoDemoUploader';
 
 type Niveau = 'debutant' | 'intermediaire' | 'avance';
-type Exercice = { id: string; nom: string; niveau: Niveau };
+type Exercice = { id: string; nom: string; niveau: Niveau; video_demo_id: string | null };
 type Brique = { id: string; nom: string; ordre: number; exercices: Exercice[] };
 type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
 
@@ -56,7 +57,7 @@ export default function EditSkillTreeScreen({
     // Supabase suit les clés étrangères automatiquement.
     const { data, error } = await supabase
       .from('piliers')
-      .select('id, nom, ordre, briques(id, nom, ordre, exercices(id, nom, niveau))')
+      .select('id, nom, ordre, briques(id, nom, ordre, exercices(id, nom, niveau, video_demo_id))')
       .eq('skill_tree_id', skillTree.id)
       .order('ordre');
 
@@ -280,6 +281,11 @@ export default function EditSkillTreeScreen({
                           >
                             <Text style={styles.deleteIcon}>🗑</Text>
                           </TouchableOpacity>
+                          <VideoDemoUploader
+                            exerciceId={exercice.id}
+                            aDejaUneVideo={!!exercice.video_demo_id}
+                            onUploadReussi={chargerArbre}
+                          />
                         </>
                       ) : (
                         <TextInput
