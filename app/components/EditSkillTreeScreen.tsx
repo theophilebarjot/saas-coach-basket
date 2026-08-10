@@ -11,16 +11,10 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-type Brique = { id: string; nom: string; ordre: number };
 type Niveau = 'debutant' | 'intermediaire' | 'avance';
 type Exercice = { id: string; nom: string; niveau: Niveau };
-type Pilier = {
-  id: string;
-  nom: string;
-  ordre: number;
-  briques: Brique[];
-  exercices: Exercice[];
-};
+type Brique = { id: string; nom: string; ordre: number; exercices: Exercice[] };
+type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
 
 const NIVEAUX: { valeur: Niveau; label: string }[] = [
   { valeur: 'debutant', label: 'Débutant' },
@@ -39,6 +33,8 @@ export default function EditSkillTreeScreen({
   const [piliers, setPiliers] = useState<Pilier[]>([]);
   const [loading, setLoading] = useState(true);
   const [nouveauPilierNom, setNouveauPilierNom] = useState('');
+  // Brouillons pour les cases d'exercice encore vides (pas encore en base)
+  const [brouillons, setBrouillons] = useState<Record<string, string>>({});
 
   async function chargerArbre() {
     setLoading(true);
@@ -56,37 +52,26 @@ export default function EditSkillTreeScreen({
     }
     setSkillTreeId(skillTree.id);
 
-    const { data: piliersData, error: erreurPiliers } = await supabase
+    // Requête imbriquée sur 3 niveaux : piliers -> briques -> exercices,
+    // Supabase suit les clés étrangères automatiquement.
+    const { data, error } = await supabase
       .from('piliers')
-      .select('id, nom, ordre, briques(id, nom, ordre)')
+      .select('id, nom, ordre, briques(id, nom, ordre, exercices(id, nom, niveau))')
       .eq('skill_tree_id', skillTree.id)
       .order('ordre');
 
-    if (erreurPiliers) {
-      Alert.alert('Erreur', erreurPiliers.message);
-      setLoading(false);
-      return;
-    }
-
-    // Les exercices se chargent à part (ils appartiennent au coach,
-    // rattachés à un pilier, pas imbriqués dans la requête piliers).
-    const pilierIds = (piliersData ?? []).map((p) => p.id);
-    const { data: exercicesData, error: erreurExercices } = await supabase
-      .from('exercices')
-      .select('id, nom, niveau, pilier_id')
-      .in('pilier_id', pilierIds);
-
-    if (erreurExercices) {
-      Alert.alert('Erreur', erreurExercices.message);
+    if (error) {
+      Alert.alert('Erreur', error.message);
       setLoading(false);
       return;
     }
 
     setPiliers(
-      (piliersData ?? []).map((p) => ({
+      (data ?? []).map((p) => ({
         ...p,
-        briques: (p.briques ?? []).sort((a, b) => a.ordre - b.ordre),
-        exercices: (exercicesData ?? []).filter((e) => e.pilier_id === p.id),
+        briques: (p.briques ?? [])
+          .sort((a, b) => a.ordre - b.ordre)
+          .map((b) => ({ ...b, exercices: b.exercices ?? [] })),
       }))
     );
     setLoading(false);
@@ -105,18 +90,13 @@ export default function EditSkillTreeScreen({
       nom: nouveauPilierNom.trim(),
       ordre: piliers.length + 1,
     });
-    if (error) {
-      Alert.alert('Erreur', error.message);
-      return;
-    }
+    if (error) return Alert.alert('Erreur', error.message);
     setNouveauPilierNom('');
     chargerArbre();
   }
 
   function renommerPilier(pilierId: string, nouveauNom: string) {
-    setPiliers((prev) =>
-      prev.map((p) => (p.id === pilierId ? { ...p, nom: nouveauNom } : p))
-    );
+    setPiliers((prev) => prev.map((p) => (p.id === pilierId ? { ...p, nom: nouveauNom } : p)));
   }
 
   async function sauvegarderPilier(pilierId: string, nom: string) {
@@ -126,40 +106,30 @@ export default function EditSkillTreeScreen({
   }
 
   function confirmerSuppressionPilier(pilierId: string, nom: string) {
-    Alert.alert(
-      'Supprimer ce pilier ?',
-      `"${nom}", ses briques et ses exercices seront supprimés définitivement.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase.from('piliers').delete().eq('id', pilierId);
-            if (error) {
-              Alert.alert('Erreur', error.message);
-            } else {
-              chargerArbre();
-            }
-          },
+    Alert.alert('Supprimer ce pilier ?', `"${nom}" et tout son contenu seront supprimés.`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('piliers').delete().eq('id', pilierId);
+          if (error) Alert.alert('Erreur', error.message);
+          else chargerArbre();
         },
-      ]
-    );
+      },
+    ]);
   }
 
-  // --- Briques ---
+  // --- Briques (les "dérivés") ---
 
   async function ajouterBrique(pilierId: string) {
     const pilier = piliers.find((p) => p.id === pilierId);
     const { error } = await supabase.from('briques').insert({
       pilier_id: pilierId,
-      nom: 'Nouvelle brique',
+      nom: 'Nouveau dérivé',
       ordre: (pilier?.briques.length ?? 0) + 1,
     });
-    if (error) {
-      Alert.alert('Erreur', error.message);
-      return;
-    }
+    if (error) return Alert.alert('Erreur', error.message);
     chargerArbre();
   }
 
@@ -167,12 +137,7 @@ export default function EditSkillTreeScreen({
     setPiliers((prev) =>
       prev.map((p) =>
         p.id === pilierId
-          ? {
-              ...p,
-              briques: p.briques.map((b) =>
-                b.id === briqueId ? { ...b, nom: nouveauNom } : b
-              ),
-            }
+          ? { ...p, briques: p.briques.map((b) => (b.id === briqueId ? { ...b, nom: nouveauNom } : b)) }
           : p
       )
     );
@@ -185,76 +150,69 @@ export default function EditSkillTreeScreen({
   }
 
   function confirmerSuppressionBrique(briqueId: string, nom: string) {
-    Alert.alert('Supprimer cette brique ?', `"${nom}" sera supprimée définitivement.`, [
+    Alert.alert('Supprimer ce dérivé ?', `"${nom}" et ses exercices seront supprimés.`, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer',
         style: 'destructive',
         onPress: async () => {
           const { error } = await supabase.from('briques').delete().eq('id', briqueId);
-          if (error) {
-            Alert.alert('Erreur', error.message);
-          } else {
-            chargerArbre();
-          }
+          if (error) Alert.alert('Erreur', error.message);
+          else chargerArbre();
         },
       },
     ]);
   }
 
-  // --- Exercices ---
+  // --- Exercices (un par niveau, dans chaque brique) ---
 
-  async function ajouterExercice(pilierId: string, niveau: Niveau) {
-    const { error } = await supabase.from('exercices').insert({
-      coach_id: coachId,
-      pilier_id: pilierId,
-      niveau,
-      nom: 'Nouvel exercice',
-    });
-    if (error) {
-      Alert.alert('Erreur', error.message);
-      return;
-    }
-    chargerArbre();
-  }
-
-  function renommerExercice(pilierId: string, exerciceId: string, nouveauNom: string) {
-    setPiliers((prev) =>
-      prev.map((p) =>
-        p.id === pilierId
-          ? {
-              ...p,
-              exercices: p.exercices.map((e) =>
-                e.id === exerciceId ? { ...e, nom: nouveauNom } : e
-              ),
-            }
-          : p
-      )
-    );
-  }
-
-  async function sauvegarderExercice(exerciceId: string, nom: string) {
+  async function sauvegarderExerciceExistant(exerciceId: string, nom: string) {
     if (!nom.trim()) return;
     const { error } = await supabase.from('exercices').update({ nom: nom.trim() }).eq('id', exerciceId);
     if (error) Alert.alert('Erreur', error.message);
   }
 
+  async function creerExercice(briqueId: string, niveau: Niveau) {
+    const cle = `${briqueId}-${niveau}`;
+    const nom = brouillons[cle]?.trim();
+    if (!nom) return;
+    const { error } = await supabase.from('exercices').insert({
+      coach_id: coachId,
+      brique_id: briqueId,
+      niveau,
+      nom,
+    });
+    if (error) return Alert.alert('Erreur', error.message);
+    setBrouillons((prev) => ({ ...prev, [cle]: '' }));
+    chargerArbre();
+  }
+
   function confirmerSuppressionExercice(exerciceId: string, nom: string) {
-    Alert.alert('Supprimer cet exercice ?', `"${nom}" sera supprimé définitivement.`, [
+    Alert.alert('Supprimer cet exercice ?', `"${nom}" sera supprimé.`, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer',
         style: 'destructive',
         onPress: async () => {
           const { error } = await supabase.from('exercices').delete().eq('id', exerciceId);
-          if (error) {
-            Alert.alert('Erreur', error.message);
-          } else {
-            chargerArbre();
-          }
+          if (error) Alert.alert('Erreur', error.message);
+          else chargerArbre();
         },
       },
     ]);
+  }
+
+  function renommerExerciceLocal(briqueId: string, exerciceId: string, texte: string) {
+    setPiliers((prev) =>
+      prev.map((p) => ({
+        ...p,
+        briques: p.briques.map((b) =>
+          b.id === briqueId
+            ? { ...b, exercices: b.exercices.map((e) => (e.id === exerciceId ? { ...e, nom: texte } : e)) }
+            : b
+        ),
+      }))
+    );
   }
 
   if (loading) {
@@ -281,7 +239,7 @@ export default function EditSkillTreeScreen({
               <TextInput
                 style={styles.pilierInput}
                 value={pilier.nom}
-                onChangeText={(texte) => renommerPilier(pilier.id, texte)}
+                onChangeText={(t) => renommerPilier(pilier.id, t)}
                 onEndEditing={() => sauvegarderPilier(pilier.id, pilier.nom)}
               />
               <TouchableOpacity onPress={() => confirmerSuppressionPilier(pilier.id, pilier.nom)}>
@@ -289,53 +247,59 @@ export default function EditSkillTreeScreen({
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.sousTitre}>Briques de progression</Text>
             {pilier.briques.map((brique) => (
-              <View key={brique.id} style={styles.itemRow}>
-                <TextInput
-                  style={styles.itemInput}
-                  value={brique.nom}
-                  onChangeText={(texte) => renommerBrique(pilier.id, brique.id, texte)}
-                  onEndEditing={() => sauvegarderBrique(brique.id, brique.nom)}
-                />
-                <TouchableOpacity onPress={() => confirmerSuppressionBrique(brique.id, brique.nom)}>
-                  <Text style={styles.deleteIcon}>🗑</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity style={styles.addLink} onPress={() => ajouterBrique(pilier.id)}>
-              <Text style={styles.addLinkText}>+ Ajouter une brique</Text>
-            </TouchableOpacity>
+              <View key={brique.id} style={styles.briqueBloc}>
+                <View style={styles.briqueHeader}>
+                  <TextInput
+                    style={styles.briqueInput}
+                    value={brique.nom}
+                    onChangeText={(t) => renommerBrique(pilier.id, brique.id, t)}
+                    onEndEditing={() => sauvegarderBrique(brique.id, brique.nom)}
+                  />
+                  <TouchableOpacity onPress={() => confirmerSuppressionBrique(brique.id, brique.nom)}>
+                    <Text style={styles.deleteIcon}>🗑</Text>
+                  </TouchableOpacity>
+                </View>
 
-            <Text style={[styles.sousTitre, { marginTop: 16 }]}>Exercices par niveau</Text>
-            {NIVEAUX.map(({ valeur, label }) => (
-              <View key={valeur} style={styles.niveauBloc}>
-                <Text style={styles.niveauLabel}>{label}</Text>
-                {pilier.exercices
-                  .filter((e) => e.niveau === valeur)
-                  .map((exercice) => (
-                    <View key={exercice.id} style={styles.itemRow}>
-                      <TextInput
-                        style={styles.itemInput}
-                        value={exercice.nom}
-                        onChangeText={(texte) => renommerExercice(pilier.id, exercice.id, texte)}
-                        onEndEditing={() => sauvegarderExercice(exercice.id, exercice.nom)}
-                      />
-                      <TouchableOpacity
-                        onPress={() => confirmerSuppressionExercice(exercice.id, exercice.nom)}
-                      >
-                        <Text style={styles.deleteIcon}>🗑</Text>
-                      </TouchableOpacity>
+                {NIVEAUX.map(({ valeur, label }) => {
+                  const exercice = brique.exercices.find((e) => e.niveau === valeur);
+                  const cle = `${brique.id}-${valeur}`;
+                  return (
+                    <View key={valeur} style={styles.niveauRow}>
+                      <Text style={styles.niveauLabel}>{label}</Text>
+                      {exercice ? (
+                        <>
+                          <TextInput
+                            style={styles.exerciceInput}
+                            value={exercice.nom}
+                            onChangeText={(t) => renommerExerciceLocal(brique.id, exercice.id, t)}
+                            onEndEditing={() => sauvegarderExerciceExistant(exercice.id, exercice.nom)}
+                          />
+                          <TouchableOpacity
+                            onPress={() => confirmerSuppressionExercice(exercice.id, exercice.nom)}
+                          >
+                            <Text style={styles.deleteIcon}>🗑</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TextInput
+                          style={styles.exerciceInputVide}
+                          placeholder="+ Ajouter un exercice"
+                          placeholderTextColor="#A8A29E"
+                          value={brouillons[cle] ?? ''}
+                          onChangeText={(t) => setBrouillons((prev) => ({ ...prev, [cle]: t }))}
+                          onEndEditing={() => creerExercice(brique.id, valeur)}
+                        />
+                      )}
                     </View>
-                  ))}
-                <TouchableOpacity
-                  style={styles.addLink}
-                  onPress={() => ajouterExercice(pilier.id, valeur)}
-                >
-                  <Text style={styles.addLinkText}>+ Ajouter un exercice {label.toLowerCase()}</Text>
-                </TouchableOpacity>
+                  );
+                })}
               </View>
             ))}
+
+            <TouchableOpacity style={styles.addLink} onPress={() => ajouterBrique(pilier.id)}>
+              <Text style={styles.addLinkText}>+ Ajouter un dérivé</Text>
+            </TouchableOpacity>
           </View>
         ))}
 
@@ -364,17 +328,17 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '700', color: '#1C1917' },
   scroll: { flex: 1, padding: 20 },
   pilierBloc: {
-    marginBottom: 20,
+    marginBottom: 22,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
     borderColor: '#E7E5E4',
   },
-  pilierHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  pilierHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   pilierInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#1C1917',
     borderWidth: 1,
@@ -385,11 +349,18 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#FAFAF8',
   },
-  sousTitre: { fontSize: 13, fontWeight: '700', color: '#78716C', marginTop: 10, marginBottom: 6, textTransform: 'uppercase' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 12 },
-  itemInput: {
+  briqueBloc: {
+    marginLeft: 10,
+    marginBottom: 12,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: '#FED7AA',
+  },
+  briqueHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  briqueInput: {
     flex: 1,
     fontSize: 14,
+    fontWeight: '600',
     color: '#1C1917',
     borderWidth: 1,
     borderColor: '#E7E5E4',
@@ -399,11 +370,35 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#FFFFFF',
   },
-  deleteIcon: { fontSize: 16, padding: 4 },
-  addLink: { marginLeft: 12, marginTop: 2, marginBottom: 4 },
+  niveauRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginLeft: 8 },
+  niveauLabel: { fontSize: 11, color: '#A8A29E', width: 88 },
+  exerciceInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1C1917',
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginRight: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  exerciceInputVide: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1C1917',
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: '#FAFAF8',
+  },
+  deleteIcon: { fontSize: 14, padding: 4 },
+  addLink: { marginLeft: 10, marginTop: 2 },
   addLinkText: { color: '#EA580C', fontSize: 13, fontWeight: '600' },
-  niveauBloc: { marginLeft: 12, marginBottom: 8 },
-  niveauLabel: { fontSize: 12, fontWeight: '700', color: '#A8A29E', marginBottom: 4 },
   nouveauPilierBloc: { marginTop: 8, marginBottom: 30 },
   addPilierButton: {
     backgroundColor: '#EA580C',
