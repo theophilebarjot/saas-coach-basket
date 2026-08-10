@@ -1,5 +1,28 @@
 {
   "devDependencies": {
     "supabase": "^2.113.0"
-  }
+  },
+  "name": "saas-coach-basket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "eciesjs": "^0.5.0",
+    "jose": "^6.2.8"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theophilebarjot/saas-coach-basket.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/theophilebarjot/saas-coach-basket/issues"
+  },
+  "homepage": "https://github.com/theophilebarjot/saas-coach-basket#readme"
 }
