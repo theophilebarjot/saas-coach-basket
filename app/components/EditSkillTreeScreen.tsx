@@ -12,7 +12,21 @@ import {
 import { supabase } from '../lib/supabase';
 
 type Brique = { id: string; nom: string; ordre: number };
-type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
+type Niveau = 'debutant' | 'intermediaire' | 'avance';
+type Exercice = { id: string; nom: string; niveau: Niveau };
+type Pilier = {
+  id: string;
+  nom: string;
+  ordre: number;
+  briques: Brique[];
+  exercices: Exercice[];
+};
+
+const NIVEAUX: { valeur: Niveau; label: string }[] = [
+  { valeur: 'debutant', label: 'Débutant' },
+  { valeur: 'intermediaire', label: 'Intermédiaire' },
+  { valeur: 'avance', label: 'Avancé' },
+];
 
 export default function EditSkillTreeScreen({
   coachId,
@@ -54,10 +68,25 @@ export default function EditSkillTreeScreen({
       return;
     }
 
+    // Les exercices se chargent à part (ils appartiennent au coach,
+    // rattachés à un pilier, pas imbriqués dans la requête piliers).
+    const pilierIds = (piliersData ?? []).map((p) => p.id);
+    const { data: exercicesData, error: erreurExercices } = await supabase
+      .from('exercices')
+      .select('id, nom, niveau, pilier_id')
+      .in('pilier_id', pilierIds);
+
+    if (erreurExercices) {
+      Alert.alert('Erreur', erreurExercices.message);
+      setLoading(false);
+      return;
+    }
+
     setPiliers(
       (piliersData ?? []).map((p) => ({
         ...p,
         briques: (p.briques ?? []).sort((a, b) => a.ordre - b.ordre),
+        exercices: (exercicesData ?? []).filter((e) => e.pilier_id === p.id),
       }))
     );
     setLoading(false);
@@ -84,7 +113,7 @@ export default function EditSkillTreeScreen({
     chargerArbre();
   }
 
-  async function renommerPilier(pilierId: string, nouveauNom: string) {
+  function renommerPilier(pilierId: string, nouveauNom: string) {
     setPiliers((prev) =>
       prev.map((p) => (p.id === pilierId ? { ...p, nom: nouveauNom } : p))
     );
@@ -99,7 +128,7 @@ export default function EditSkillTreeScreen({
   function confirmerSuppressionPilier(pilierId: string, nom: string) {
     Alert.alert(
       'Supprimer ce pilier ?',
-      `"${nom}" et toutes ses briques seront supprimées définitivement.`,
+      `"${nom}", ses briques et ses exercices seront supprimés définitivement.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -173,6 +202,61 @@ export default function EditSkillTreeScreen({
     ]);
   }
 
+  // --- Exercices ---
+
+  async function ajouterExercice(pilierId: string, niveau: Niveau) {
+    const { error } = await supabase.from('exercices').insert({
+      coach_id: coachId,
+      pilier_id: pilierId,
+      niveau,
+      nom: 'Nouvel exercice',
+    });
+    if (error) {
+      Alert.alert('Erreur', error.message);
+      return;
+    }
+    chargerArbre();
+  }
+
+  function renommerExercice(pilierId: string, exerciceId: string, nouveauNom: string) {
+    setPiliers((prev) =>
+      prev.map((p) =>
+        p.id === pilierId
+          ? {
+              ...p,
+              exercices: p.exercices.map((e) =>
+                e.id === exerciceId ? { ...e, nom: nouveauNom } : e
+              ),
+            }
+          : p
+      )
+    );
+  }
+
+  async function sauvegarderExercice(exerciceId: string, nom: string) {
+    if (!nom.trim()) return;
+    const { error } = await supabase.from('exercices').update({ nom: nom.trim() }).eq('id', exerciceId);
+    if (error) Alert.alert('Erreur', error.message);
+  }
+
+  function confirmerSuppressionExercice(exerciceId: string, nom: string) {
+    Alert.alert('Supprimer cet exercice ?', `"${nom}" sera supprimé définitivement.`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('exercices').delete().eq('id', exerciceId);
+          if (error) {
+            Alert.alert('Erreur', error.message);
+          } else {
+            chargerArbre();
+          }
+        },
+      },
+    ]);
+  }
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -205,10 +289,11 @@ export default function EditSkillTreeScreen({
               </TouchableOpacity>
             </View>
 
+            <Text style={styles.sousTitre}>Briques de progression</Text>
             {pilier.briques.map((brique) => (
-              <View key={brique.id} style={styles.briqueRow}>
+              <View key={brique.id} style={styles.itemRow}>
                 <TextInput
-                  style={styles.briqueInput}
+                  style={styles.itemInput}
                   value={brique.nom}
                   onChangeText={(texte) => renommerBrique(pilier.id, brique.id, texte)}
                   onEndEditing={() => sauvegarderBrique(brique.id, brique.nom)}
@@ -218,10 +303,39 @@ export default function EditSkillTreeScreen({
                 </TouchableOpacity>
               </View>
             ))}
-
-            <TouchableOpacity style={styles.addBriqueButton} onPress={() => ajouterBrique(pilier.id)}>
-              <Text style={styles.addBriqueText}>+ Ajouter une brique</Text>
+            <TouchableOpacity style={styles.addLink} onPress={() => ajouterBrique(pilier.id)}>
+              <Text style={styles.addLinkText}>+ Ajouter une brique</Text>
             </TouchableOpacity>
+
+            <Text style={[styles.sousTitre, { marginTop: 16 }]}>Exercices par niveau</Text>
+            {NIVEAUX.map(({ valeur, label }) => (
+              <View key={valeur} style={styles.niveauBloc}>
+                <Text style={styles.niveauLabel}>{label}</Text>
+                {pilier.exercices
+                  .filter((e) => e.niveau === valeur)
+                  .map((exercice) => (
+                    <View key={exercice.id} style={styles.itemRow}>
+                      <TextInput
+                        style={styles.itemInput}
+                        value={exercice.nom}
+                        onChangeText={(texte) => renommerExercice(pilier.id, exercice.id, texte)}
+                        onEndEditing={() => sauvegarderExercice(exercice.id, exercice.nom)}
+                      />
+                      <TouchableOpacity
+                        onPress={() => confirmerSuppressionExercice(exercice.id, exercice.nom)}
+                      >
+                        <Text style={styles.deleteIcon}>🗑</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                <TouchableOpacity
+                  style={styles.addLink}
+                  onPress={() => ajouterExercice(pilier.id, valeur)}
+                >
+                  <Text style={styles.addLinkText}>+ Ajouter un exercice {label.toLowerCase()}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         ))}
 
@@ -257,7 +371,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E7E5E4',
   },
-  pilierHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  pilierHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   pilierInput: {
     flex: 1,
     fontSize: 16,
@@ -271,8 +385,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#FAFAF8',
   },
-  briqueRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 12 },
-  briqueInput: {
+  sousTitre: { fontSize: 13, fontWeight: '700', color: '#78716C', marginTop: 10, marginBottom: 6, textTransform: 'uppercase' },
+  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 12 },
+  itemInput: {
     flex: 1,
     fontSize: 14,
     color: '#1C1917',
@@ -285,8 +400,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   deleteIcon: { fontSize: 16, padding: 4 },
-  addBriqueButton: { marginLeft: 12, marginTop: 4 },
-  addBriqueText: { color: '#EA580C', fontSize: 13, fontWeight: '600' },
+  addLink: { marginLeft: 12, marginTop: 2, marginBottom: 4 },
+  addLinkText: { color: '#EA580C', fontSize: 13, fontWeight: '600' },
+  niveauBloc: { marginLeft: 12, marginBottom: 8 },
+  niveauLabel: { fontSize: 12, fontWeight: '700', color: '#A8A29E', marginBottom: 4 },
   nouveauPilierBloc: { marginTop: 8, marginBottom: 30 },
   addPilierButton: {
     backgroundColor: '#EA580C',
