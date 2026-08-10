@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import SkillTreeScreen from './SkillTreeScreen';
+import EditSkillTreeScreen from './EditSkillTreeScreen';
 
 type Joueur = {
   id: string;
@@ -45,6 +46,7 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   const [emailParent, setEmailParent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [joueurSelectionne, setJoueurSelectionne] = useState<Joueur | null>(null);
+  const [editionArbre, setEditionArbre] = useState(false);
 
   const age = calculerAge(dateNaissance);
   const estMineur = age !== null && age < SEUIL_MAJORITE_NUMERIQUE;
@@ -105,7 +107,9 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
     setEmailParent('');
     chargerJoueurs();
   }
-
+  if (editionArbre) {
+  return <EditSkillTreeScreen coachId={coachId} onBack={() => setEditionArbre(false)} />;
+}
   if (joueurSelectionne) {
     return (
       <SkillTreeScreen
@@ -120,6 +124,11 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Mes joueurs</Text>
+      <TouchableOpacity onPress={() => setEditionArbre(true)}>
+  <Text style={{ color: '#EA580C', fontWeight: '600', marginBottom: 16 }}>
+    ⚙️ Modifier mon arbre de compétences
+  </Text>
+</TouchableOpacity>
 
       {loadingList ? (
         <ActivityIndicator color="#EA580C" style={{ marginVertical: 16 }} />

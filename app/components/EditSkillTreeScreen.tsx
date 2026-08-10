@@ -1,0 +1,299 @@
+import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import { supabase } from '../lib/supabase';
+
+type Brique = { id: string; nom: string; ordre: number };
+type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
+
+export default function EditSkillTreeScreen({
+  coachId,
+  onBack,
+}: {
+  coachId: string;
+  onBack: () => void;
+}) {
+  const [skillTreeId, setSkillTreeId] = useState<string | null>(null);
+  const [piliers, setPiliers] = useState<Pilier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nouveauPilierNom, setNouveauPilierNom] = useState('');
+
+  async function chargerArbre() {
+    setLoading(true);
+    const { data: skillTree, error: erreurArbre } = await supabase
+      .from('skill_trees')
+      .select('id')
+      .eq('coach_id', coachId)
+      .limit(1)
+      .single();
+
+    if (erreurArbre || !skillTree) {
+      Alert.alert('Erreur', "Impossible de charger votre arbre de compétences.");
+      setLoading(false);
+      return;
+    }
+    setSkillTreeId(skillTree.id);
+
+    const { data: piliersData, error: erreurPiliers } = await supabase
+      .from('piliers')
+      .select('id, nom, ordre, briques(id, nom, ordre)')
+      .eq('skill_tree_id', skillTree.id)
+      .order('ordre');
+
+    if (erreurPiliers) {
+      Alert.alert('Erreur', erreurPiliers.message);
+      setLoading(false);
+      return;
+    }
+
+    setPiliers(
+      (piliersData ?? []).map((p) => ({
+        ...p,
+        briques: (p.briques ?? []).sort((a, b) => a.ordre - b.ordre),
+      }))
+    );
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    chargerArbre();
+  }, []);
+
+  // --- Piliers ---
+
+  async function ajouterPilier() {
+    if (!nouveauPilierNom.trim() || !skillTreeId) return;
+    const { error } = await supabase.from('piliers').insert({
+      skill_tree_id: skillTreeId,
+      nom: nouveauPilierNom.trim(),
+      ordre: piliers.length + 1,
+    });
+    if (error) {
+      Alert.alert('Erreur', error.message);
+      return;
+    }
+    setNouveauPilierNom('');
+    chargerArbre();
+  }
+
+  async function renommerPilier(pilierId: string, nouveauNom: string) {
+    setPiliers((prev) =>
+      prev.map((p) => (p.id === pilierId ? { ...p, nom: nouveauNom } : p))
+    );
+  }
+
+  async function sauvegarderPilier(pilierId: string, nom: string) {
+    if (!nom.trim()) return;
+    const { error } = await supabase.from('piliers').update({ nom: nom.trim() }).eq('id', pilierId);
+    if (error) Alert.alert('Erreur', error.message);
+  }
+
+  function confirmerSuppressionPilier(pilierId: string, nom: string) {
+    Alert.alert(
+      'Supprimer ce pilier ?',
+      `"${nom}" et toutes ses briques seront supprimées définitivement.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('piliers').delete().eq('id', pilierId);
+            if (error) {
+              Alert.alert('Erreur', error.message);
+            } else {
+              chargerArbre();
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  // --- Briques ---
+
+  async function ajouterBrique(pilierId: string) {
+    const pilier = piliers.find((p) => p.id === pilierId);
+    const { error } = await supabase.from('briques').insert({
+      pilier_id: pilierId,
+      nom: 'Nouvelle brique',
+      ordre: (pilier?.briques.length ?? 0) + 1,
+    });
+    if (error) {
+      Alert.alert('Erreur', error.message);
+      return;
+    }
+    chargerArbre();
+  }
+
+  function renommerBrique(pilierId: string, briqueId: string, nouveauNom: string) {
+    setPiliers((prev) =>
+      prev.map((p) =>
+        p.id === pilierId
+          ? {
+              ...p,
+              briques: p.briques.map((b) =>
+                b.id === briqueId ? { ...b, nom: nouveauNom } : b
+              ),
+            }
+          : p
+      )
+    );
+  }
+
+  async function sauvegarderBrique(briqueId: string, nom: string) {
+    if (!nom.trim()) return;
+    const { error } = await supabase.from('briques').update({ nom: nom.trim() }).eq('id', briqueId);
+    if (error) Alert.alert('Erreur', error.message);
+  }
+
+  function confirmerSuppressionBrique(briqueId: string, nom: string) {
+    Alert.alert('Supprimer cette brique ?', `"${nom}" sera supprimée définitivement.`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('briques').delete().eq('id', briqueId);
+          if (error) {
+            Alert.alert('Erreur', error.message);
+          } else {
+            chargerArbre();
+          }
+        },
+      },
+    ]);
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color="#EA580C" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack}>
+          <Text style={styles.backLink}>← Retour</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Modifier mon arbre</Text>
+      </View>
+
+      <ScrollView style={styles.scroll}>
+        {piliers.map((pilier) => (
+          <View key={pilier.id} style={styles.pilierBloc}>
+            <View style={styles.pilierHeader}>
+              <TextInput
+                style={styles.pilierInput}
+                value={pilier.nom}
+                onChangeText={(texte) => renommerPilier(pilier.id, texte)}
+                onEndEditing={() => sauvegarderPilier(pilier.id, pilier.nom)}
+              />
+              <TouchableOpacity onPress={() => confirmerSuppressionPilier(pilier.id, pilier.nom)}>
+                <Text style={styles.deleteIcon}>🗑</Text>
+              </TouchableOpacity>
+            </View>
+
+            {pilier.briques.map((brique) => (
+              <View key={brique.id} style={styles.briqueRow}>
+                <TextInput
+                  style={styles.briqueInput}
+                  value={brique.nom}
+                  onChangeText={(texte) => renommerBrique(pilier.id, brique.id, texte)}
+                  onEndEditing={() => sauvegarderBrique(brique.id, brique.nom)}
+                />
+                <TouchableOpacity onPress={() => confirmerSuppressionBrique(brique.id, brique.nom)}>
+                  <Text style={styles.deleteIcon}>🗑</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            <TouchableOpacity style={styles.addBriqueButton} onPress={() => ajouterBrique(pilier.id)}>
+              <Text style={styles.addBriqueText}>+ Ajouter une brique</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+
+        <View style={styles.nouveauPilierBloc}>
+          <TextInput
+            style={styles.pilierInput}
+            placeholder="Nom du nouveau pilier"
+            placeholderTextColor="#A8A29E"
+            value={nouveauPilierNom}
+            onChangeText={setNouveauPilierNom}
+          />
+          <TouchableOpacity style={styles.addPilierButton} onPress={ajouterPilier}>
+            <Text style={styles.addPilierText}>+ Ajouter un pilier</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#FAFAF8' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAF8' },
+  header: { padding: 20, paddingTop: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E7E5E4' },
+  backLink: { color: '#EA580C', fontWeight: '600', marginBottom: 8 },
+  title: { fontSize: 20, fontWeight: '700', color: '#1C1917' },
+  scroll: { flex: 1, padding: 20 },
+  pilierBloc: {
+    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+  },
+  pilierHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  pilierInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1C1917',
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginRight: 8,
+    backgroundColor: '#FAFAF8',
+  },
+  briqueRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 12 },
+  briqueInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1C1917',
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginRight: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  deleteIcon: { fontSize: 16, padding: 4 },
+  addBriqueButton: { marginLeft: 12, marginTop: 4 },
+  addBriqueText: { color: '#EA580C', fontSize: 13, fontWeight: '600' },
+  nouveauPilierBloc: { marginTop: 8, marginBottom: 30 },
+  addPilierButton: {
+    backgroundColor: '#EA580C',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  addPilierText: { color: '#FFFFFF', fontWeight: '600' },
+});
