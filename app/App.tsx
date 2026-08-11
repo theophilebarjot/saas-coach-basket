@@ -133,7 +133,12 @@ export default function App() {
 
   // ---------- Écran non connecté : parcours joueur ----------
   if (modeJoueur) {
-    return <PremiereConnexionJoueur onRetour={() => setModeJoueur(false)} />;
+    return (
+      <PremiereConnexionJoueur
+        onRetour={() => setModeJoueur(false)}
+        onCompteLie={() => setTypeUtilisateur('joueur')}
+      />
+    );
   }
 
   // ---------- Écran non connecté : accueil + choix ----------

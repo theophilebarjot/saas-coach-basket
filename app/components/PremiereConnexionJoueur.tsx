@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-export default function PremiereConnexionJoueur({ onRetour }: { onRetour: () => void }) {
+export default function PremiereConnexionJoueur({
+  onRetour,
+  onCompteLie,
+}: {
+  onRetour: () => void;
+  onCompteLie: () => void;
+}) {
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
@@ -26,6 +32,7 @@ export default function PremiereConnexionJoueur({ onRetour }: { onRetour: () => 
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password: motDePasse,
+      options: { data: { role: 'joueur' } },
     });
 
     if (signUpError) {
@@ -64,11 +71,11 @@ export default function PremiereConnexionJoueur({ onRetour }: { onRetour: () => 
     }
 
     const { prenom } = await reponse.json();
+    onCompteLie();
     Alert.alert(
       'Compte lié !',
       `Bienvenue ${prenom ?? ''} ! Ton compte est bien relié à ta fiche. La prochaine étape (consentement) arrivera bientôt.`
     );
-    // Pour l'instant on s'arrête ici -- l'étape consentement viendra dans la 2e passe.
   }
 
   return (
