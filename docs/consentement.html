@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demande de consentement</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #FAFAF8; margin: 0;
+           padding: 24px; display: flex; justify-content: center; }
+    .carte { background: white; max-width: 440px; width: 100%; padding: 32px;
+             border-radius: 12px; border: 1px solid #E7E5E4; margin-top: 40px; }
+    h1 { font-size: 20px; color: #1C1917; }
+    p { color: #57534E; line-height: 1.5; }
+    .bouton { display: block; padding: 14px 20px; border-radius: 8px;
+               font-weight: bold; text-decoration: none; border: none;
+               font-size: 15px; cursor: pointer; width: 100%; margin-top: 8px;
+               text-align: center; box-sizing: border-box; }
+    .accepter { background: #16A34A; color: white; }
+    .refuser { background: white; color: #DC2626; border: 1px solid #DC2626; }
+    .chargement { text-align: center; color: #78716C; }
+  </style>
+</head>
+<body>
+  <div class="carte" id="carte">
+    <p class="chargement">Chargement...</p>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://lafpqrjshtsjeqweoxjb.supabase.co/functions/v1/confirmer-consentement-parental";
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const carte = document.getElementById("carte");
+
+    function afficher(html) {
+      carte.innerHTML = html;
+    }
+
+    async function charger() {
+      if (!token) {
+        afficher("<h1>Lien invalide</h1><p>Ce lien ne contient pas d'identifiant valide.</p>");
+        return;
+      }
+      const reponse = await fetch(`${SUPABASE_URL}?token=${encodeURIComponent(token)}`);
+      const data = await reponse.json();
+
+      if (data.statut === "invalide") {
+        afficher("<h1>Lien invalide</h1><p>Ce lien de consentement n'existe pas.</p>");
+      } else if (data.statut === "deja_traite") {
+        afficher("<h1>Déjà traité</h1><p>Ce lien a déjà été utilisé.</p>");
+      } else if (data.statut === "expire") {
+        afficher("<h1>Lien expiré</h1><p>Ce lien a expiré. Demandez au coach de vous en renvoyer un nouveau.</p>");
+      } else {
+        afficher(`
+          <h1>Consentement pour ${data.prenom ?? "ce joueur"} ${data.nom ?? ""}</h1>
+          <p>
+            Un coach souhaite inscrire ${data.prenom ?? "ce joueur"} sur son
+            application de suivi d'entraînement basket. Conformément au RGPD,
+            votre accord est nécessaire.
+          </p>
+          <button class="bouton accepter" id="btnAccepter">J'accepte</button>
+          <button class="bouton refuser" id="btnRefuser">Je refuse</button>
+        `);
+        document.getElementById("btnAccepter").onclick = () => envoyer("accepte");
+        document.getElementById("btnRefuser").onclick = () => envoyer("refuse");
+      }
+    }
+
+    async function envoyer(decision) {
+      afficher('<p class="chargement">Envoi en cours...</p>');
+      const reponse = await fetch(SUPABASE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, decision }),
+      });
+      const data = await reponse.json();
+
+      if (!reponse.ok) {
+        afficher(`<h1>Erreur</h1><p>${data.error ?? "Une erreur est survenue."}</p>`);
+        return;
+      }
+
+      if (decision === "accepte") {
+        afficher("<h1>Merci !</h1><p>Votre accord a bien été enregistré. Votre enfant pourra utiliser l'application une fois qu'il aura lui-même confirmé son inscription.</p>");
+      } else {
+        afficher("<h1>Refus enregistré</h1><p>Votre refus a bien été pris en compte.</p>");
+      }
+    }
+
+    charger();
+  </script>
+</body>
+</html>

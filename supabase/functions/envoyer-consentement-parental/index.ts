@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { joueur_id } = await req.json();
+    const { joueur_id, email_parent } = await req.json();
     if (!joueur_id || typeof joueur_id !== "string") {
       return new Response(JSON.stringify({ error: "joueur_id manquant" }), {
         status: 400,
@@ -19,7 +19,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Authentification : seul un coach connecté peut déclencher cet envoi
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Non authentifié" }), {
@@ -41,12 +40,11 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const coachId = userData.user.id;
+    const callerId = userData.user.id;
 
-    // Vérification de propriété : ce joueur appartient-il bien à ce coach ?
     const { data: joueur, error: joueurError } = await supabaseAdmin
       .from("joueurs")
-      .select("id, prenom, nom, email_parent, coach_id")
+      .select("id, prenom, nom, email_parent, coach_id, auth_user_id")
       .eq("id", joueur_id)
       .maybeSingle();
 
@@ -56,38 +54,97 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    if (joueur.coach_id !== coachId) {
+
+    // Qui appelle : le coach propriétaire, ou le joueur lui-même ?
+    let role: "coach" | "joueur";
+    if (joueur.coach_id === callerId) {
+      role = "coach";
+    } else if (joueur.auth_user_id === callerId) {
+      role = "joueur";
+    } else {
       return new Response(JSON.stringify({ error: "Accès refusé" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       });
     }
-    if (!joueur.email_parent) {
-      return new Response(JSON.stringify({ error: "Aucun email parent renseigné pour ce joueur" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+
+    let emailParentFinal: string;
+
+    if (role === "joueur") {
+      // Le joueur soumet (ou resoumet) l'email de son parent, et donne
+      // son propre consentement au même moment (double consentement).
+      if (!email_parent || typeof email_parent !== "string" || !email_parent.includes("@")) {
+        return new Response(JSON.stringify({ error: "Email parent invalide" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      emailParentFinal = email_parent.trim();
+
+      const { error: updateError } = await supabaseAdmin
+        .from("joueurs")
+        .update({ email_parent: emailParentFinal })
+        .eq("id", joueur_id);
+
+      if (updateError) {
+        return new Response(
+          JSON.stringify({ error: "Échec d'enregistrement de l'email", detail: updateError.message }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Enregistrement du consentement du JOUEUR (partie 'joueur'), pour
+      // les deux finalités -- distinct du consentement du parent qui
+      // arrivera plus tard via le lien email.
+      for (const type of ["acces_service", "captation_image"]) {
+        await supabaseAdmin.from("consentements").insert({
+          joueur_id,
+          type_consentement: type,
+          partie: "joueur",
+          action: "accepte",
+          version_texte: "v1",
+          methode_verification: "case_a_cocher_app",
+          token_hash: "",
+        });
+
+        await supabaseAdmin.rpc("appliquer_consentement", {
+          p_joueur_id: joueur_id,
+          p_type: type,
+          p_partie: "joueur",
+          p_action: "accepte",
+          p_version_texte: "v1",
+          p_methode_verification: "case_a_cocher_app",
+          p_token_hash: "",
+        });
+      }
+    } else {
+      // Le coach déclenche un (re)envoi -- l'email doit déjà exister.
+      if (!joueur.email_parent) {
+        return new Response(JSON.stringify({ error: "Aucun email parent renseigné pour ce joueur" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      emailParentFinal = joueur.email_parent;
     }
 
-    // Récupérer le nom du coach pour personnaliser l'email
     const { data: coach } = await supabaseAdmin
       .from("coaches")
       .select("email")
-      .eq("id", coachId)
+      .eq("id", joueur.coach_id)
       .maybeSingle();
 
-    // Génération d'un jeton aléatoire sécurisé (32 octets = 64 caractères hex)
     const tokenBytes = new Uint8Array(32);
     crypto.getRandomValues(tokenBytes);
     const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 
-    const { error: insertError } = await supabaseAdmin
+    const { error: insertTokenError } = await supabaseAdmin
       .from("jetons_consentement_parental")
       .insert({ joueur_id, token });
 
-    if (insertError) {
+    if (insertTokenError) {
       return new Response(
-        JSON.stringify({ error: "Échec de création du jeton", detail: insertError.message }),
+        JSON.stringify({ error: "Échec de création du jeton", detail: insertTokenError.message }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -103,7 +160,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: "onboarding@resend.dev",
-        to: joueur.email_parent,
+        to: emailParentFinal,
         subject: `Demande de consentement pour ${joueur.prenom}`,
         html: `
           <div style="font-family: sans-serif; max-width: 480px; margin: auto;">
@@ -111,7 +168,7 @@ Deno.serve(async (req) => {
             <p>Bonjour,</p>
             <p>
               Le coach <b>${coach?.email ?? "votre coach"}</b> souhaite inscrire
-              <b>${joueur.prenom} ${joueur.nom}</b> sur son application de suivi
+              <b>${joueur.prenom} ${joueur.nom ?? ""}</b> sur son application de suivi
               d'entraînement basket.
             </p>
             <p>

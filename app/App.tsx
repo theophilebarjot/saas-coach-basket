@@ -13,6 +13,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import JoueursScreen from './components/JoueursScreen';
 import PremiereConnexionJoueur from './components/PremiereConnexionJoueur';
+import EspaceJoueur from './components/EspaceJoueur';
 
 type TypeUtilisateur = 'inconnu' | 'coach' | 'joueur';
 
@@ -119,13 +120,7 @@ export default function App() {
         {typeUtilisateur === 'coach' ? (
           <JoueursScreen coachId={session.user.id} />
         ) : (
-          <View style={styles.attenteJoueur}>
-            <Text style={styles.attenteTitre}>Compte joueur lié ✓</Text>
-            <Text style={styles.attenteTexte}>
-              Ton compte est bien relié à ta fiche. Les prochaines étapes
-              (consentement, accès à ton arbre de progression) arriveront très bientôt.
-            </Text>
-          </View>
+          <EspaceJoueur authUserId={session.user.id} />
         )}
       </View>
     );
