@@ -1,6 +1,26 @@
 // lib/uploadDemoVideo.ts
 
 import { supabase } from './supabase';
+export async function obtenirUrlVisionnageDemo(videoId: string): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+
+  const reponse = await fetch(
+    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/get-demo-video-url`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ video_id: videoId }),
+    }
+  );
+
+  if (!reponse.ok) return null;
+  const { viewUrl } = await reponse.json();
+  return viewUrl ?? null;
+}
 
 type ResultatUpload =
   | { succes: true; videoId: string }

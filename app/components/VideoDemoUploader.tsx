@@ -1,25 +1,40 @@
 // components/VideoDemoUploader.tsx
 
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { uploaderVideoDemo } from '../lib/uploadDemoVideo';
+import { uploaderVideoDemo, obtenirUrlVisionnageDemo } from '../lib/uploadDemoVideo';
 
 type Etat = 'inactif' | 'en_cours' | 'echec';
 
 export default function VideoDemoUploader({
   exerciceId,
-  aDejaUneVideo,
+  videoTerminee,
+  videoId,
   onUploadReussi,
 }: {
   exerciceId: string;
-  aDejaUneVideo: boolean;
+  videoTerminee: boolean;
+  videoId: string | null;
   onUploadReussi: () => void;
 }) {
   const [etat, setEtat] = useState<Etat>('inactif');
   const [tentativeActuelle, setTentativeActuelle] = useState<{ numero: number; max: number } | null>(null);
   const [dernierUri, setDernierUri] = useState<string | null>(null);
   const [dernierMessageErreur, setDernierMessageErreur] = useState<string | null>(null);
+  const [chargementLecture, setChargementLecture] = useState(false);
+
+  async function voirLaVideo() {
+    if (!videoId) return;
+    setChargementLecture(true);
+    const url = await obtenirUrlVisionnageDemo(videoId);
+    setChargementLecture(false);
+    if (!url) {
+      Alert.alert('Erreur', "Impossible de charger la vidéo pour l'instant.");
+      return;
+    }
+    Linking.openURL(url);
+  }
 
   async function choisirDepuisLaPellicule() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -76,9 +91,6 @@ export default function VideoDemoUploader({
         }
       }
     } catch (erreurInattendue) {
-      // Filet de sécurité final : même si uploaderVideoDemo devait
-      // laisser passer une exception, l'interface ne reste jamais
-      // bloquée en "Envoi..." indéfiniment.
       setTentativeActuelle(null);
       setEtat('echec');
       setDernierMessageErreur(String(erreurInattendue));
@@ -117,8 +129,17 @@ export default function VideoDemoUploader({
 
   return (
     <View style={styles.conteneur}>
+      {videoTerminee && (
+        <TouchableOpacity style={styles.boutonVoir} onPress={voirLaVideo} disabled={chargementLecture}>
+          {chargementLecture ? (
+            <ActivityIndicator size="small" color="#16A34A" />
+          ) : (
+            <Text style={styles.texteVoir}>✓ Voir</Text>
+          )}
+        </TouchableOpacity>
+      )}
       <TouchableOpacity style={styles.bouton} onPress={choisirDepuisLaPellicule}>
-        <Text style={styles.texteBouton}>{aDejaUneVideo ? 'Remplacer' : '+ Démo'}</Text>
+        <Text style={styles.texteBouton}>{videoTerminee ? 'Remplacer' : '+ Démo'}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.boutonSecondaire} onPress={filmerDirectement}>
         <Text style={styles.texteBoutonSecondaire}>Filmer</Text>
@@ -128,7 +149,7 @@ export default function VideoDemoUploader({
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flexDirection: 'row', gap: 6, marginLeft: 6 },
+  conteneur: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginLeft: 6, flex: 1 },
   conteneurEchec: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 6, flex: 1 },
   bouton: { backgroundColor: '#2563eb', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 },
   texteBouton: { color: 'white', fontSize: 11, fontWeight: '600' },
@@ -137,4 +158,6 @@ const styles = StyleSheet.create({
   texteEnCours: { fontSize: 11, color: '#666' },
   boutonReessayer: { backgroundColor: '#DC2626', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 },
   texteErreur: { fontSize: 10, color: '#DC2626', flexShrink: 1 },
+  boutonVoir: { backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#16A34A', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 },
+  texteVoir: { color: '#16A34A', fontSize: 11, fontWeight: '600' },
 });

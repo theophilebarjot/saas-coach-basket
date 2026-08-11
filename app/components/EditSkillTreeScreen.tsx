@@ -13,7 +13,13 @@ import { supabase } from '../lib/supabase';
 import VideoDemoUploader from '../components/VideoDemoUploader';
 
 type Niveau = 'debutant' | 'intermediaire' | 'avance';
-type Exercice = { id: string; nom: string; niveau: Niveau; video_demo_id: string | null };
+type Exercice = {
+  id: string;
+  nom: string;
+  niveau: Niveau;
+  video_demo_id: string | null;
+  videos: { statut_upload: string } | null;
+};
 type Brique = { id: string; nom: string; ordre: number; exercices: Exercice[] };
 type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
 
@@ -45,7 +51,6 @@ export default function EditSkillTreeScreen({
       .eq('coach_id', coachId)
       .limit(1)
       .single();
-
     if (erreurArbre || !skillTree) {
       Alert.alert('Erreur', "Impossible de charger votre arbre de compétences.");
       setLoading(false);
@@ -57,7 +62,7 @@ export default function EditSkillTreeScreen({
     // Supabase suit les clés étrangères automatiquement.
     const { data, error } = await supabase
       .from('piliers')
-      .select('id, nom, ordre, briques(id, nom, ordre, exercices(id, nom, niveau, video_demo_id))')
+      .select('id, nom, ordre, briques(id, nom, ordre, exercices(id, nom, niveau, video_demo_id, videos(statut_upload)))')
       .eq('skill_tree_id', skillTree.id)
       .order('ordre');
 
@@ -68,11 +73,11 @@ export default function EditSkillTreeScreen({
     }
 
     setPiliers(
-      (data ?? []).map((p) => ({
+      ((data ?? []) as any[]).map((p: any) => ({
         ...p,
         briques: (p.briques ?? [])
-          .sort((a, b) => a.ordre - b.ordre)
-          .map((b) => ({ ...b, exercices: b.exercices ?? [] })),
+          .sort((a: any, b: any) => a.ordre - b.ordre)
+          .map((b: any) => ({ ...b, exercices: b.exercices ?? [] })),
       }))
     );
     setLoading(false);
@@ -283,7 +288,8 @@ export default function EditSkillTreeScreen({
                           </TouchableOpacity>
                           <VideoDemoUploader
                             exerciceId={exercice.id}
-                            aDejaUneVideo={!!exercice.video_demo_id}
+                            videoTerminee={exercice.videos?.statut_upload === 'termine'}
+                            videoId={exercice.video_demo_id}
                             onUploadReussi={chargerArbre}
                           />
                         </>
