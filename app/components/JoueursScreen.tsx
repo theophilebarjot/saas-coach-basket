@@ -12,6 +12,7 @@ import {
 import { supabase } from '../lib/supabase';
 import SkillTreeScreen from './SkillTreeScreen';
 import EditSkillTreeScreen from './EditSkillTreeScreen';
+import CreerSeanceScreen from './CreerSeanceScreen';
 
 type Joueur = {
   id: string;
@@ -47,6 +48,7 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   const [dateNaissance, setDateNaissance] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [joueurSelectionne, setJoueurSelectionne] = useState<Joueur | null>(null);
+  const [modeFiche, setModeFiche] = useState<'menu' | 'arbre' | 'seance'>('menu');
   const [editionArbre, setEditionArbre] = useState(false);
 
   const age = calculerAge(dateNaissance);
@@ -115,13 +117,44 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   }
 
   if (joueurSelectionne) {
+    if (modeFiche === 'arbre') {
+      return (
+        <SkillTreeScreen
+          coachId={coachId}
+          joueurId={joueurSelectionne.id}
+          joueurNom={`${joueurSelectionne.prenom} ${joueurSelectionne.nom ?? ''}`}
+          onBack={() => setModeFiche('menu')}
+        />
+      );
+    }
+
+    if (modeFiche === 'seance') {
+      return (
+        <CreerSeanceScreen
+          coachId={coachId}
+          joueurId={joueurSelectionne.id}
+          joueurNom={`${joueurSelectionne.prenom} ${joueurSelectionne.nom ?? ''}`}
+          onBack={() => setModeFiche('menu')}
+        />
+      );
+    }
+
     return (
-      <SkillTreeScreen
-        coachId={coachId}
-        joueurId={joueurSelectionne.id}
-        joueurNom={`${joueurSelectionne.prenom} ${joueurSelectionne.nom ?? ''}`}
-        onBack={() => setJoueurSelectionne(null)}
-      />
+      <View style={styles.container}>
+        <TouchableOpacity onPress={() => setJoueurSelectionne(null)}>
+          <Text style={styles.backLinkFiche}>← Retour à la liste</Text>
+        </TouchableOpacity>
+        <Text style={styles.ficheNom}>
+          {joueurSelectionne.prenom} {joueurSelectionne.nom ?? ''}
+        </Text>
+
+        <TouchableOpacity style={styles.menuBouton} onPress={() => setModeFiche('arbre')}>
+          <Text style={styles.menuBoutonTexte}>📊 Voir son arbre de compétences</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuBouton} onPress={() => setModeFiche('seance')}>
+          <Text style={styles.menuBoutonTexte}>📅 Planifier une séance</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
@@ -147,7 +180,7 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.joueurRow}
-              onPress={() => setJoueurSelectionne(item)}
+              onPress={() => { setJoueurSelectionne(item); setModeFiche('menu'); }}
             >
               <View>
                 <Text style={styles.joueurNom}>
@@ -238,6 +271,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E7E5E4',
   },
   joueurNom: { fontSize: 16, color: '#1C1917' },
+  backLinkFiche: { color: '#EA580C', fontWeight: '600', marginBottom: 16 },
+  ficheNom: { fontSize: 22, fontWeight: '700', color: '#1C1917', marginBottom: 20 },
+  menuBouton: {
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E7E5E4',
+    borderRadius: 10, padding: 16, marginBottom: 12,
+  },
+  menuBoutonTexte: { fontSize: 15, fontWeight: '600', color: '#1C1917' },
   codeInvitation: { fontSize: 11, color: '#78716C', marginTop: 2 },
   badge: {
     fontSize: 12,
