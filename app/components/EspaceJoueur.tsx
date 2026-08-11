@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Switch, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
+import MonArbreJoueur from './MonArbreJoueur';
 
 type JoueurInfo = {
   id: string;
   prenom: string;
   email_parent: string | null;
   statut_acces_service: string;
+  coach_id: string;
 };
 
 export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
@@ -22,7 +24,7 @@ export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
     setLoading(true);
     const { data, error } = await supabase
       .from('joueurs')
-      .select('id, prenom, email_parent, statut_acces_service')
+      .select('id, prenom, email_parent, statut_acces_service, coach_id')
       .eq('auth_user_id', authUserId)
       .maybeSingle();
     if (!error) setJoueur(data);
@@ -96,12 +98,11 @@ export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
 
   if (joueur.statut_acces_service === 'actif') {
     return (
-      <View style={styles.centre}>
-        <Text style={styles.titreSucces}>Accès activé ✓</Text>
-        <Text style={styles.texteAttente}>
-          Bienvenue {joueur.prenom} ! Le reste de ton espace arrive très bientôt.
-        </Text>
-      </View>
+      <MonArbreJoueur
+        authUserId={authUserId}
+        joueurId={joueur.id}
+        coachId={joueur.coach_id}
+      />
     );
   }
 
