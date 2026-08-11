@@ -20,6 +20,8 @@ type Joueur = {
   date_naissance: string;
   email_parent: string | null;
   statut_acces_service: string;
+  code_invitation: string | null;
+  auth_user_id: string | null;
 };
 
 const SEUIL_MAJORITE_NUMERIQUE = 15;
@@ -43,7 +45,6 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [dateNaissance, setDateNaissance] = useState('');
-  const [emailParent, setEmailParent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [joueurSelectionne, setJoueurSelectionne] = useState<Joueur | null>(null);
   const [editionArbre, setEditionArbre] = useState(false);
@@ -55,7 +56,7 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
     setLoadingList(true);
     const { data, error } = await supabase
       .from('joueurs')
-      .select('id, prenom, nom, date_naissance, email_parent, statut_acces_service')
+      .select('id, prenom, nom, date_naissance, email_parent, statut_acces_service, code_invitation, auth_user_id')
       .order('prenom');
     if (error) {
       Alert.alert('Erreur de chargement', error.message);
@@ -78,22 +79,18 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
       Alert.alert('Date invalide', 'Utilisez le format AAAA-MM-JJ, par exemple 2012-03-15.');
       return;
     }
-    if (estMineur && !emailParent.trim()) {
-      Alert.alert(
-        'Email du parent requis',
-        `Ce joueur a ${age} ans. En dessous de ${SEUIL_MAJORITE_NUMERIQUE} ans, l'email d'un parent est obligatoire pour la procédure de consentement.`
-      );
-      return;
-    }
 
     setSubmitting(true);
-    const { error } = await supabase.from('joueurs').insert({
-      coach_id: coachId,
-      prenom: prenom.trim(),
-      nom: nom.trim() || null,
-      date_naissance: dateNaissance,
-      email_parent: estMineur ? emailParent.trim() : null,
-    });
+    const { data: nouveauJoueur, error } = await supabase
+      .from('joueurs')
+      .insert({
+        coach_id: coachId,
+        prenom: prenom.trim(),
+        nom: nom.trim() || null,
+        date_naissance: dateNaissance,
+      })
+      .select('code_invitation')
+      .single();
     setSubmitting(false);
 
     if (error) {
@@ -101,15 +98,22 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
       return;
     }
 
+    const prenomAjoute = prenom.trim();
     setPrenom('');
     setNom('');
     setDateNaissance('');
-    setEmailParent('');
     chargerJoueurs();
+
+    Alert.alert(
+      'Joueur ajouté',
+      `Communiquez ce code à ${prenomAjoute} pour qu'il/elle puisse créer son compte dans l'app :\n\n${nouveauJoueur?.code_invitation ?? '(non généré)'}`
+    );
   }
+
   if (editionArbre) {
-  return <EditSkillTreeScreen coachId={coachId} onBack={() => setEditionArbre(false)} />;
-}
+    return <EditSkillTreeScreen coachId={coachId} onBack={() => setEditionArbre(false)} />;
+  }
+
   if (joueurSelectionne) {
     return (
       <SkillTreeScreen
@@ -125,10 +129,10 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
     <View style={styles.container}>
       <Text style={styles.title}>Mes joueurs</Text>
       <TouchableOpacity onPress={() => setEditionArbre(true)}>
-  <Text style={{ color: '#EA580C', fontWeight: '600', marginBottom: 16 }}>
-    ⚙️ Modifier mon arbre de compétences
-  </Text>
-</TouchableOpacity>
+        <Text style={{ color: '#EA580C', fontWeight: '600', marginBottom: 16 }}>
+          ⚙️ Modifier mon arbre de compétences
+        </Text>
+      </TouchableOpacity>
 
       {loadingList ? (
         <ActivityIndicator color="#EA580C" style={{ marginVertical: 16 }} />
@@ -145,9 +149,14 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
               style={styles.joueurRow}
               onPress={() => setJoueurSelectionne(item)}
             >
-              <Text style={styles.joueurNom}>
-                {item.prenom} {item.nom ?? ''}
-              </Text>
+              <View>
+                <Text style={styles.joueurNom}>
+                  {item.prenom} {item.nom ?? ''}
+                </Text>
+                {!item.auth_user_id && item.code_invitation && (
+                  <Text style={styles.codeInvitation}>Code : {item.code_invitation}</Text>
+                )}
+              </View>
               <Text
                 style={[
                   styles.badge,
@@ -195,15 +204,9 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
       )}
 
       {estMineur && (
-        <TextInput
-          style={styles.input}
-          placeholder="Email du parent"
-          placeholderTextColor="#A8A29E"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={emailParent}
-          onChangeText={setEmailParent}
-        />
+        <Text style={styles.ageInfo}>
+          Le joueur devra renseigner l'email de son parent lui-même, à sa première connexion.
+        </Text>
       )}
 
       <TouchableOpacity
@@ -235,6 +238,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E7E5E4',
   },
   joueurNom: { fontSize: 16, color: '#1C1917' },
+  codeInvitation: { fontSize: 11, color: '#78716C', marginTop: 2 },
   badge: {
     fontSize: 12,
     fontWeight: '600',
