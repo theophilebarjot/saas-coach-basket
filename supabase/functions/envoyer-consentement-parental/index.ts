@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
     }
 
     const lienConsentement =
-      `${Deno.env.get("SUPABASE_URL")}/functions/v1/confirmer-consentement-parental?token=${token}`;
+      `https://theophilebarjot.github.io/saas-coach-basket/consentement.html?token=${token}`;
 
     const reponseResend = await fetch("https://api.resend.com/emails", {
       method: "POST",
