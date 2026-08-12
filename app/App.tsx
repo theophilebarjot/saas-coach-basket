@@ -15,9 +15,25 @@ import JoueursScreen from './components/JoueursScreen';
 import PremiereConnexionJoueur from './components/PremiereConnexionJoueur';
 import EspaceJoueur from './components/EspaceJoueur';
 import SoumissionsAValiderScreen from './components/SoumissionsAValiderScreen';
+import AbonnementBanner from './components/AbonnementBanner';
+import AbonnementScreen from './components/AbonnementScreen';
+import AccesRestreintScreen from './components/AccesRestreintScreen';
 
 type TypeUtilisateur = 'inconnu' | 'coach' | 'joueur';
 type OngletCoach = 'joueurs' | 'soumissions';
+type AbonnementInfo = { statut: string; date_fin: string | null } | null;
+
+function calculerRaisonBlocage(abonnement: AbonnementInfo): 'essai_termine' | 'impaye' | 'annule' | null {
+  if (!abonnement) return null; // Pas encore chargé : on ne bloque jamais par précaution
+  if (abonnement.statut === 'actif') return null;
+  if (abonnement.statut === 'essai') {
+    const essaiExpire = abonnement.date_fin ? new Date(abonnement.date_fin).getTime() < Date.now() : false;
+    return essaiExpire ? 'essai_termine' : null;
+  }
+  if (abonnement.statut === 'impaye') return 'impaye';
+  if (abonnement.statut === 'annule') return 'annule';
+  return null;
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -34,6 +50,10 @@ export default function App() {
 
   // Navigation interne côté coach (mêmes principes que le menu joueur dans EspaceJoueur)
   const [ongletCoach, setOngletCoach] = useState<OngletCoach>('joueurs');
+  const [afficherAbonnement, setAfficherAbonnement] = useState(false);
+
+  // Statut d'abonnement du coach, utilisé pour la bannière et la restriction d'accès
+  const [abonnementCoach, setAbonnementCoach] = useState<AbonnementInfo>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -72,6 +92,23 @@ export default function App() {
     }
     determinerType();
   }, [session]);
+
+  // Charge le statut d'abonnement une fois qu'on sait que c'est un coach
+  useEffect(() => {
+    async function chargerAbonnementCoach() {
+      if (!session || typeUtilisateur !== 'coach') {
+        setAbonnementCoach(null);
+        return;
+      }
+      const { data } = await supabase
+        .from('abonnements')
+        .select('statut, date_fin')
+        .eq('coach_id', session.user.id)
+        .maybeSingle();
+      setAbonnementCoach(data);
+    }
+    chargerAbonnementCoach();
+  }, [session, typeUtilisateur]);
 
   async function handleSignUp() {
     setLoading(true);
@@ -112,14 +149,32 @@ export default function App() {
       );
     }
 
+    // Écran plein écran de l'abonnement, si le coach l'a ouvert volontairement
+    if (typeUtilisateur === 'coach' && afficherAbonnement) {
+      return (
+        <View style={styles.connectedContainer}>
+          <AbonnementScreen onBack={() => setAfficherAbonnement(false)} />
+        </View>
+      );
+    }
+
+    const raisonBlocage = typeUtilisateur === 'coach' ? calculerRaisonBlocage(abonnementCoach) : null;
+
     return (
       <View style={styles.connectedContainer}>
         <StatusBar style="dark" />
         <View style={styles.header}>
           <Text style={styles.headerEmail}>{session.user.email}</Text>
-          <TouchableOpacity onPress={handleSignOut}>
-            <Text style={styles.headerSignOut}>Déconnexion</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            {typeUtilisateur === 'coach' && (
+              <TouchableOpacity onPress={() => setAfficherAbonnement(true)}>
+                <Text style={styles.headerSignOut}>Abonnement</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleSignOut}>
+              <Text style={styles.headerSignOut}>Déconnexion</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {typeUtilisateur === 'coach' ? (
@@ -143,7 +198,14 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {ongletCoach === 'joueurs' ? (
+            <AbonnementBanner onGerer={() => setAfficherAbonnement(true)} />
+
+            {raisonBlocage ? (
+              <AccesRestreintScreen
+                raison={raisonBlocage}
+                onVoirAbonnement={() => setAfficherAbonnement(true)}
+              />
+            ) : ongletCoach === 'joueurs' ? (
               <JoueursScreen coachId={session.user.id} />
             ) : (
               <SoumissionsAValiderScreen />
