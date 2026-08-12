@@ -14,8 +14,10 @@ import { supabase } from './lib/supabase';
 import JoueursScreen from './components/JoueursScreen';
 import PremiereConnexionJoueur from './components/PremiereConnexionJoueur';
 import EspaceJoueur from './components/EspaceJoueur';
+import SoumissionsAValiderScreen from './components/SoumissionsAValiderScreen';
 
 type TypeUtilisateur = 'inconnu' | 'coach' | 'joueur';
+type OngletCoach = 'joueurs' | 'soumissions';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -29,6 +31,9 @@ export default function App() {
   // Une fois connecté : coach ou joueur ? (le temps de vérifier en base)
   const [typeUtilisateur, setTypeUtilisateur] = useState<TypeUtilisateur>('inconnu');
   const [verificationType, setVerificationType] = useState(false);
+
+  // Navigation interne côté coach (mêmes principes que le menu joueur dans EspaceJoueur)
+  const [ongletCoach, setOngletCoach] = useState<OngletCoach>('joueurs');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -118,7 +123,32 @@ export default function App() {
         </View>
 
         {typeUtilisateur === 'coach' ? (
-          <JoueursScreen coachId={session.user.id} />
+          <View style={styles.coachContainer}>
+            <View style={styles.menuCoach}>
+              <TouchableOpacity
+                style={[styles.ongletBoutonCoach, ongletCoach === 'joueurs' && styles.ongletBoutonCoachActif]}
+                onPress={() => setOngletCoach('joueurs')}
+              >
+                <Text style={[styles.ongletTexteCoach, ongletCoach === 'joueurs' && styles.ongletTexteCoachActif]}>
+                  Mes joueurs
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ongletBoutonCoach, ongletCoach === 'soumissions' && styles.ongletBoutonCoachActif]}
+                onPress={() => setOngletCoach('soumissions')}
+              >
+                <Text style={[styles.ongletTexteCoach, ongletCoach === 'soumissions' && styles.ongletTexteCoachActif]}>
+                  Soumissions
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {ongletCoach === 'joueurs' ? (
+              <JoueursScreen coachId={session.user.id} />
+            ) : (
+              <SoumissionsAValiderScreen />
+            )}
+          </View>
         ) : (
           <EspaceJoueur authUserId={session.user.id} />
         )}
@@ -199,6 +229,27 @@ const styles = StyleSheet.create({
   },
   headerEmail: { fontSize: 13, color: '#78716C' },
   headerSignOut: { fontSize: 13, color: '#EA580C', fontWeight: '600' },
+  coachContainer: { flex: 1 },
+  menuCoach: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+    gap: 8,
+    backgroundColor: '#FAFAF8',
+  },
+  ongletBoutonCoach: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#F5F5F4',
+    borderWidth: 1,
+    borderColor: '#E7E5E4',
+  },
+  ongletBoutonCoachActif: { backgroundColor: '#EA580C', borderColor: '#EA580C' },
+  ongletTexteCoach: { fontSize: 13, fontWeight: '600', color: '#57534E' },
+  ongletTexteCoachActif: { color: '#FFFFFF' },
   attenteJoueur: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
   attenteTitre: { fontSize: 22, fontWeight: '700', color: '#16A34A', marginBottom: 12, textAlign: 'center' },
   attenteTexte: { fontSize: 15, color: '#57534E', lineHeight: 22, textAlign: 'center' },

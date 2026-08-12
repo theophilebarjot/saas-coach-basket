@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import SkillTreeScreen from './SkillTreeScreen';
 import EditSkillTreeScreen from './EditSkillTreeScreen';
 import CreerSeanceScreen from './CreerSeanceScreen';
+import ProgressionJoueurScreen from './ProgressionJoueurScreen';
 
 type Joueur = {
   id: string;
@@ -48,7 +49,7 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
   const [dateNaissance, setDateNaissance] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [joueurSelectionne, setJoueurSelectionne] = useState<Joueur | null>(null);
-  const [modeFiche, setModeFiche] = useState<'menu' | 'arbre' | 'seance'>('menu');
+  const [modeFiche, setModeFiche] = useState<'menu' | 'arbre' | 'seance' | 'progression'>('menu');
   const [editionArbre, setEditionArbre] = useState(false);
 
   const age = calculerAge(dateNaissance);
@@ -139,6 +140,17 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
       );
     }
 
+    if (modeFiche === 'progression') {
+  return (
+    <ProgressionJoueurScreen
+      coachId={coachId}
+      joueurId={joueurSelectionne.id}
+      joueurNom={`${joueurSelectionne.prenom} ${joueurSelectionne.nom ?? ''}`}
+      onBack={() => setModeFiche('menu')}
+    />
+  );
+}
+
     return (
       <View style={styles.container}>
         <TouchableOpacity onPress={() => setJoueurSelectionne(null)}>
@@ -154,6 +166,9 @@ export default function JoueursScreen({ coachId }: { coachId: string }) {
         <TouchableOpacity style={styles.menuBouton} onPress={() => setModeFiche('seance')}>
           <Text style={styles.menuBoutonTexte}>📅 Planifier une séance</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.menuBouton} onPress={() => setModeFiche('progression')}>
+  <Text style={styles.menuBoutonTexte}>📈 Voir sa progression</Text>
+</TouchableOpacity>
       </View>
     );
   }

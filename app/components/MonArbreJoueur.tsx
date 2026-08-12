@@ -1,8 +1,9 @@
 // components/MonArbreJoueur.tsx
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { supabase } from '../lib/supabase';
+import DetailBriqueJoueur from './DetailBriqueJoueur';
 
 type Brique = { id: string; nom: string; ordre: number };
 type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
@@ -19,6 +20,7 @@ export default function MonArbreJoueur({
   const [piliers, setPiliers] = useState<Pilier[]>([]);
   const [briquesDebloquees, setBriquesDebloquees] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [briqueSelectionnee, setBriqueSelectionnee] = useState<Brique | null>(null);
 
   async function chargerArbre() {
     setLoading(true);
@@ -68,6 +70,16 @@ export default function MonArbreJoueur({
     chargerArbre();
   }, [joueurId]);
 
+  if (briqueSelectionnee) {
+  return (
+    <DetailBriqueJoueur
+      briqueId={briqueSelectionnee.id}
+      briqueNom={briqueSelectionnee.nom}
+      onBack={() => setBriqueSelectionnee(null)}
+    />
+  );
+}
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -95,17 +107,19 @@ export default function MonArbreJoueur({
               pilier.briques.map((brique) => {
                 const debloquee = briquesDebloquees.has(brique.id);
                 return (
-                  <View
-                    key={brique.id}
-                    style={[
-                      styles.briqueRow,
-                      debloquee ? styles.briqueDebloquee : styles.briqueVerrouillee,
-                    ]}
-                  >
-                    <Text style={styles.briqueIcone}>{debloquee ? '🔓' : '🔒'}</Text>
-                    <Text style={styles.briqueNom}>{brique.nom}</Text>
-                  </View>
-                );
+  <TouchableOpacity
+    key={brique.id}
+    style={[
+      styles.briqueRow,
+      debloquee ? styles.briqueDebloquee : styles.briqueVerrouillee,
+    ]}
+    onPress={() => debloquee && setBriqueSelectionnee(brique)}
+    disabled={!debloquee}
+  >
+    <Text style={styles.briqueIcone}>{debloquee ? '🔓' : '🔒'}</Text>
+    <Text style={styles.briqueNom}>{brique.nom}</Text>
+  </TouchableOpacity>
+);
               })
             )}
           </View>

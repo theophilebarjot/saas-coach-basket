@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Switch, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import MonArbreJoueur from './MonArbreJoueur';
+import MesSeancesJoueur from './MesSeancesJoueur';
 
 type JoueurInfo = {
   id: string;
@@ -13,12 +14,15 @@ type JoueurInfo = {
   coach_id: string;
 };
 
+type OngletActif = 'arbre' | 'seances';
+
 export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
   const [joueur, setJoueur] = useState<JoueurInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [emailParent, setEmailParent] = useState('');
   const [caseCochee, setCaseCochee] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const [onglet, setOnglet] = useState<OngletActif>('arbre');
 
   async function chargerJoueur() {
     setLoading(true);
@@ -98,11 +102,32 @@ export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
 
   if (joueur.statut_acces_service === 'actif') {
     return (
-      <MonArbreJoueur
-        authUserId={authUserId}
-        joueurId={joueur.id}
-        coachId={joueur.coach_id}
-      />
+      <View style={styles.containerActif}>
+        <View style={styles.menu}>
+          <TouchableOpacity
+            style={[styles.ongletBouton, onglet === 'arbre' && styles.ongletBoutonActif]}
+            onPress={() => setOnglet('arbre')}
+          >
+            <Text style={[styles.ongletTexte, onglet === 'arbre' && styles.ongletTexteActif]}>
+              Mon arbre
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.ongletBouton, onglet === 'seances' && styles.ongletBoutonActif]}
+            onPress={() => setOnglet('seances')}
+          >
+            <Text style={[styles.ongletTexte, onglet === 'seances' && styles.ongletTexteActif]}>
+              Mes séances
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {onglet === 'arbre' ? (
+          <MonArbreJoueur authUserId={authUserId} joueurId={joueur.id} coachId={joueur.coach_id} />
+        ) : (
+          <MesSeancesJoueur joueurId={joueur.id} />
+        )}
+      </View>
     );
   }
 
@@ -153,6 +178,18 @@ export default function EspaceJoueur({ authUserId }: { authUserId: string }) {
 const styles = StyleSheet.create({
   centre: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
   container: { flex: 1, padding: 24, paddingTop: 40 },
+  containerActif: { flex: 1, backgroundColor: '#FAFAF8' },
+  menu: {
+    flexDirection: 'row', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4,
+    gap: 8, backgroundColor: '#FAFAF8',
+  },
+  ongletBouton: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+    backgroundColor: '#F5F5F4', borderWidth: 1, borderColor: '#E7E5E4',
+  },
+  ongletBoutonActif: { backgroundColor: '#EA580C', borderColor: '#EA580C' },
+  ongletTexte: { fontSize: 13, fontWeight: '600', color: '#57534E' },
+  ongletTexteActif: { color: '#FFFFFF' },
   titre: { fontSize: 22, fontWeight: '700', color: '#1C1917', marginBottom: 8 },
   intro: { fontSize: 14, color: '#57534E', marginBottom: 20, lineHeight: 20 },
   input: {
