@@ -15,10 +15,13 @@ type Seance = {
   exercices: SeanceExercice[];
 };
 
+type FeedbackInfo = { id: string; type: string; contenu_texte: string | null };
+
 type SoumissionInfo = {
   id: string;
   statut: string;
   statutUpload: string | null;
+  feedbacks: FeedbackInfo[];
 };
 
 export default function MesSeancesJoueur({ joueurId }: { joueurId: string }) {
@@ -71,13 +74,14 @@ export default function MesSeancesJoueur({ joueurId }: { joueurId: string }) {
 
     setSeances(seancesFormatees);
 
-    // ---- Récupère les soumissions déjà existantes pour ces exercices ----
+    // ---- Récupère les soumissions déjà existantes pour ces exercices,
+    //      avec leurs feedbacks (texte et/ou audio) rattachés ----
     const tousLesSeanceExerciceIds = seancesFormatees.flatMap((s) => s.exercices.map((e) => e.id));
 
     if (tousLesSeanceExerciceIds.length > 0) {
       const { data: soumissionsData, error: erreurSoumissions } = await supabase
         .from('soumissions')
-        .select('id, seance_exercice_id, statut, videos ( statut_upload )')
+        .select('id, seance_exercice_id, statut, videos ( statut_upload ), feedbacks ( id, type, contenu_texte )')
         .eq('joueur_id', joueurId)
         .in('seance_exercice_id', tousLesSeanceExerciceIds);
 
@@ -86,10 +90,12 @@ export default function MesSeancesJoueur({ joueurId }: { joueurId: string }) {
         ((soumissionsData ?? []) as any[]).forEach((s) => {
           // Là aussi, "videos" peut revenir en objet unique plutôt qu'en tableau.
           const video = Array.isArray(s.videos) ? s.videos[0] : s.videos;
+          const feedbacksArray = Array.isArray(s.feedbacks) ? s.feedbacks : (s.feedbacks ? [s.feedbacks] : []);
           map.set(s.seance_exercice_id, {
             id: s.id,
             statut: s.statut,
             statutUpload: video?.statut_upload ?? null,
+            feedbacks: feedbacksArray,
           });
         });
         setSoumissionsParExercice(map);
@@ -146,6 +152,7 @@ export default function MesSeancesJoueur({ joueurId }: { joueurId: string }) {
                   <SoumissionUploader
                     seanceExerciceId={se.id}
                     soumission={soumissionsParExercice.get(se.id) ?? null}
+                    feedbacks={soumissionsParExercice.get(se.id)?.feedbacks ?? []}
                     onUploadReussi={chargerSeances}
                   />
                 </View>

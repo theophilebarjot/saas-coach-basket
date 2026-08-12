@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { obtenirUrlVisionnageSoumission } from '../lib/uploadSoumissionVideo';
+import EnregistreurFeedbackAudio from './EnregistreurFeedbackAudio';
+import { uploaderFeedbackAudio } from '../lib/uploadFeedbackAudio';
 
 type SoumissionAValider = {
   id: string;
@@ -22,6 +24,7 @@ export default function SoumissionsAValiderScreen() {
   const [texteFeedback, setTexteFeedback] = useState('');
   const [chargementLecture, setChargementLecture] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const [uriAudioLocal, setUriAudioLocal] = useState<string | null>(null);
 
   async function chargerSoumissions() {
     setLoading(true);
@@ -91,13 +94,14 @@ export default function SoumissionsAValiderScreen() {
   }, []);
 
   function ouvrirSoumission(id: string) {
-    if (soumissionOuverte === id) {
-      setSoumissionOuverte(null);
-    } else {
-      setSoumissionOuverte(id);
-      setTexteFeedback('');
-    }
+  if (soumissionOuverte === id) {
+    setSoumissionOuverte(null);
+  } else {
+    setSoumissionOuverte(id);
+    setTexteFeedback('');
+    setUriAudioLocal(null);
   }
+}
 
   async function voirLaVideo(soumissionId: string) {
     setChargementLecture(true);
@@ -111,54 +115,64 @@ export default function SoumissionsAValiderScreen() {
   }
 
   async function traiterSoumission(soumissionId: string, nouveauStatut: 'validee' | 'refusee') {
-    if (nouveauStatut === 'refusee' && !texteFeedback.trim()) {
-      Alert.alert('Explication requise', "Précise ce que le joueur doit corriger avant de renvoyer la séance.");
-      return;
-    }
-
-    setEnvoiEnCours(true);
-
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setEnvoiEnCours(false);
-      return;
-    }
-    const coachId = session.user.id;
-
-    if (texteFeedback.trim()) {
-      const { error: feedbackError } = await supabase.from('feedbacks').insert({
-        soumission_id: soumissionId,
-        coach_id: coachId,
-        type: 'texte',
-        contenu_texte: texteFeedback.trim(),
-      });
-      if (feedbackError) {
-        setEnvoiEnCours(false);
-        Alert.alert('Erreur', "Le feedback n'a pas pu être enregistré : " + feedbackError.message);
-        return;
-      }
-    }
-
-    const { error: majError } = await supabase
-      .from('soumissions')
-      .update({
-        statut: nouveauStatut,
-        validee_par_coach_id: coachId,
-        date_validation: new Date().toISOString(),
-      })
-      .eq('id', soumissionId);
-
-    setEnvoiEnCours(false);
-
-    if (majError) {
-      Alert.alert('Erreur', "Le statut n'a pas pu être mis à jour : " + majError.message);
-      return;
-    }
-
-    setSoumissionOuverte(null);
-    setTexteFeedback('');
-    chargerSoumissions();
+  if (nouveauStatut === 'refusee' && !texteFeedback.trim() && !uriAudioLocal) {
+    Alert.alert('Explication requise', "Ajoute un commentaire texte ou vocal avant de renvoyer la séance.");
+    return;
   }
+
+  setEnvoiEnCours(true);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    setEnvoiEnCours(false);
+    return;
+  }
+  const coachId = session.user.id;
+
+  if (texteFeedback.trim()) {
+    const { error: feedbackError } = await supabase.from('feedbacks').insert({
+      soumission_id: soumissionId,
+      coach_id: coachId,
+      type: 'texte',
+      contenu_texte: texteFeedback.trim(),
+    });
+    if (feedbackError) {
+      setEnvoiEnCours(false);
+      Alert.alert('Erreur', "Le feedback n'a pas pu être enregistré : " + feedbackError.message);
+      return;
+    }
+  }
+
+  if (uriAudioLocal) {
+    const resultatAudio = await uploaderFeedbackAudio(soumissionId, uriAudioLocal);
+    if (!resultatAudio.succes) {
+      setEnvoiEnCours(false);
+      Alert.alert('Erreur', resultatAudio.erreur);
+      return;
+    }
+  }
+
+  const { error: majError } = await supabase
+    .from('soumissions')
+    .update({
+      statut: nouveauStatut,
+      validee_par_coach_id: coachId,
+      date_validation: new Date().toISOString(),
+    })
+    .eq('id', soumissionId);
+
+  setEnvoiEnCours(false);
+
+  if (majError) {
+    Alert.alert('Erreur', "Le statut n'a pas pu être mis à jour : " + majError.message);
+    return;
+  }
+
+  setSoumissionOuverte(null);
+  setTexteFeedback('');
+  setUriAudioLocal(null);
+  chargerSoumissions();
+}
 
   if (loading) {
     return (
@@ -207,6 +221,8 @@ export default function SoumissionsAValiderScreen() {
                       <Text style={styles.texteBoutonVoir}>▶ Voir la vidéo</Text>
                     )}
                   </TouchableOpacity>
+                
+                  <EnregistreurFeedbackAudio uri={uriAudioLocal} onUriChange={setUriAudioLocal} />
 
                   <TextInput
                     style={styles.input}

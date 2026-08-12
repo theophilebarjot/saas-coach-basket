@@ -3,6 +3,14 @@
     "name": "app",
     "slug": "app",
     "scheme": "saascoachbasket",
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Autorisez l'accès au micro pour enregistrer des messages vocaux pour vos joueurs."
+        }
+      ]
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

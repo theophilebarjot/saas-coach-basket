@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploaderVideoSoumission, obtenirUrlVisionnageSoumission } from '../lib/uploadSoumissionVideo';
+import LecteurFeedbackAudio from './LecteurFeedbackAudio';
 
 type Etat = 'inactif' | 'en_cours' | 'echec';
 
@@ -13,13 +14,17 @@ type SoumissionInfo = {
   statutUpload: string | null; // statut_upload de la vidéo liée, si elle existe
 } | null;
 
+type FeedbackInfo = { id: string; type: string; contenu_texte: string | null };
+
 export default function SoumissionUploader({
   seanceExerciceId,
   soumission,
+  feedbacks,
   onUploadReussi,
 }: {
   seanceExerciceId: string;
   soumission: SoumissionInfo;
+  feedbacks: FeedbackInfo[];
   onUploadReussi: () => void;
 }) {
   const [etat, setEtat] = useState<Etat>('inactif');
@@ -107,28 +112,49 @@ export default function SoumissionUploader({
     if (dernierUri) lancerUpload(dernierUri);
   }
 
+  // ---- Bloc des feedbacks (texte et/ou audio), affiché au-dessus des
+  //      actions, quel que soit l'état de la soumission ----
+  const blocFeedbacks = feedbacks.length > 0 && (
+    <View style={styles.zoneFeedbacks}>
+      {feedbacks.map((f) => (
+        <View key={f.id} style={styles.blocFeedback}>
+          {f.type === 'texte' && f.contenu_texte && (
+            <Text style={styles.texteFeedback}>💬 {f.contenu_texte}</Text>
+          )}
+          {f.type === 'audio' && <LecteurFeedbackAudio feedbackId={f.id} />}
+        </View>
+      ))}
+    </View>
+  );
+
   if (etat === 'en_cours') {
     return (
-      <View style={styles.conteneur}>
-        <ActivityIndicator size="small" color="#EA580C" />
-        <Text style={styles.texteEnCours}>
-          {tentativeActuelle && tentativeActuelle.max > 1
-            ? `Envoi... (essai ${tentativeActuelle.numero}/${tentativeActuelle.max})`
-            : 'Envoi...'}
-        </Text>
+      <View>
+        {blocFeedbacks}
+        <View style={styles.conteneur}>
+          <ActivityIndicator size="small" color="#EA580C" />
+          <Text style={styles.texteEnCours}>
+            {tentativeActuelle && tentativeActuelle.max > 1
+              ? `Envoi... (essai ${tentativeActuelle.numero}/${tentativeActuelle.max})`
+              : 'Envoi...'}
+          </Text>
+        </View>
       </View>
     );
   }
 
   if (etat === 'echec') {
     return (
-      <View style={styles.conteneurEchec}>
-        <Text style={styles.texteErreur} numberOfLines={2}>
-          {dernierMessageErreur ?? "Échec de l'envoi"}
-        </Text>
-        <TouchableOpacity style={styles.boutonReessayer} onPress={reessayer}>
-          <Text style={styles.texteBouton}>Réessayer</Text>
-        </TouchableOpacity>
+      <View>
+        {blocFeedbacks}
+        <View style={styles.conteneurEchec}>
+          <Text style={styles.texteErreur} numberOfLines={2}>
+            {dernierMessageErreur ?? "Échec de l'envoi"}
+          </Text>
+          <TouchableOpacity style={styles.boutonReessayer} onPress={reessayer}>
+            <Text style={styles.texteBouton}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -136,10 +162,42 @@ export default function SoumissionUploader({
   // Soumission validée par le coach : on fige, plus de ré-upload possible.
   if (soumission?.statut === 'validee') {
     return (
-      <View style={styles.conteneur}>
-        <View style={styles.badgeValide}>
-          <Text style={styles.texteValide}>✓ Validé</Text>
+      <View>
+        {blocFeedbacks}
+        <View style={styles.conteneur}>
+          <View style={styles.badgeValide}>
+            <Text style={styles.texteValide}>✓ Validé</Text>
+          </View>
+          {videoDisponible && (
+            <TouchableOpacity style={styles.boutonVoir} onPress={voirLaVideo} disabled={chargementLecture}>
+              {chargementLecture ? (
+                <ActivityIndicator size="small" color="#16A34A" />
+              ) : (
+                <Text style={styles.texteVoir}>Voir</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
+      </View>
+    );
+  }
+
+  const refusee = soumission?.statut === 'refusee';
+
+  return (
+    <View>
+      {blocFeedbacks}
+      <View style={styles.conteneur}>
+        {refusee && (
+          <View style={styles.badgeRefuse}>
+            <Text style={styles.texteRefuse}>À corriger</Text>
+          </View>
+        )}
+        {!refusee && videoDisponible && (
+          <View style={styles.badgeAttente}>
+            <Text style={styles.texteAttente}>En attente</Text>
+          </View>
+        )}
         {videoDisponible && (
           <TouchableOpacity style={styles.boutonVoir} onPress={voirLaVideo} disabled={chargementLecture}>
             {chargementLecture ? (
@@ -149,39 +207,13 @@ export default function SoumissionUploader({
             )}
           </TouchableOpacity>
         )}
-      </View>
-    );
-  }
-
-  const refusee = soumission?.statut === 'refusee';
-
-  return (
-    <View style={styles.conteneur}>
-      {refusee && (
-        <View style={styles.badgeRefuse}>
-          <Text style={styles.texteRefuse}>À corriger</Text>
-        </View>
-      )}
-      {!refusee && videoDisponible && (
-        <View style={styles.badgeAttente}>
-          <Text style={styles.texteAttente}>En attente</Text>
-        </View>
-      )}
-      {videoDisponible && (
-        <TouchableOpacity style={styles.boutonVoir} onPress={voirLaVideo} disabled={chargementLecture}>
-          {chargementLecture ? (
-            <ActivityIndicator size="small" color="#16A34A" />
-          ) : (
-            <Text style={styles.texteVoir}>Voir</Text>
-          )}
+        <TouchableOpacity style={styles.bouton} onPress={choisirDepuisLaPellicule}>
+          <Text style={styles.texteBouton}>{videoDisponible ? 'Remplacer' : '+ Vidéo'}</Text>
         </TouchableOpacity>
-      )}
-      <TouchableOpacity style={styles.bouton} onPress={choisirDepuisLaPellicule}>
-        <Text style={styles.texteBouton}>{videoDisponible ? 'Remplacer' : '+ Vidéo'}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.boutonSecondaire} onPress={filmerDirectement}>
-        <Text style={styles.texteBoutonSecondaire}>Filmer</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.boutonSecondaire} onPress={filmerDirectement}>
+          <Text style={styles.texteBoutonSecondaire}>Filmer</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -204,4 +236,7 @@ const styles = StyleSheet.create({
   texteRefuse: { color: '#DC2626', fontSize: 12, fontWeight: '700' },
   badgeAttente: { backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 6 },
   texteAttente: { color: '#92400E', fontSize: 12, fontWeight: '600' },
+  zoneFeedbacks: { marginTop: 4 },
+  blocFeedback: { marginBottom: 4 },
+  texteFeedback: { fontSize: 13, color: '#57534E', fontStyle: 'italic', lineHeight: 18 },
 });
