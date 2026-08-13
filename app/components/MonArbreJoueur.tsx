@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { supabase } from '../lib/supabase';
 import DetailBriqueJoueur from './DetailBriqueJoueur';
+import ProgressionRadarJoueur from './ProgressionRadarJoueur';
 
 type Brique = { id: string; nom: string; ordre: number };
 type Pilier = { id: string; nom: string; ordre: number; briques: Brique[] };
@@ -89,10 +90,12 @@ export default function MonArbreJoueur({
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Mon arbre de progression</Text>
+  <View style={styles.container}>
+    <Text style={styles.title}>Mon arbre de progression</Text>
 
-      <ScrollView style={styles.scroll}>
+    <ProgressionRadarJoueur coachId={coachId} joueurId={joueurId} />
+
+    <ScrollView style={styles.scroll}>
         {piliers.length === 0 && (
           <Text style={styles.empty}>Ton coach n'a pas encore configuré d'arbre.</Text>
         )}

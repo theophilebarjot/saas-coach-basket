@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { supabase } from '../lib/supabase';
+import ProgressionRadarJoueur from './ProgressionRadarJoueur';
 
 type Exercice = { id: string; nom: string; niveau: string | null };
 type Brique = { id: string; nom: string; ordre: number; exercices: Exercice[] };
@@ -166,7 +167,9 @@ export default function ProgressionJoueurScreen({
       </TouchableOpacity>
       <Text style={styles.title}>Progression de {joueurNom}</Text>
 
-      <ScrollView style={styles.scroll}>
+<ProgressionRadarJoueur coachId={coachId} joueurId={joueurId} />
+
+<ScrollView style={styles.scroll}>
         {piliers.length === 0 && (
           <Text style={styles.empty}>Aucun arbre de compétences configuré.</Text>
         )}
